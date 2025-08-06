@@ -1,0 +1,25 @@
+# Sanggyeonggwan Dataset configuration for YOLOv5
+
+# Dataset path (relative to this file)
+path: ../sanggyeonggwan_dataset
+
+# Train and validation sets
+train: images  # train images (relative to 'path') 
+val: images    # val images (relative to 'path')
+
+# Classes (Update based on actual classes.txt content)
+names:
+  0: person
+  1: chair
+  2: table
+  3: book
+  4: laptop
+  5: bottle
+  6: bag
+  # Add more classes based on your actual classes.txt file
+
+# Dataset info
+nc: 7  # number of classes (update this based on actual classes)
+download: |
+  # Download script (optional)
+  echo "Sanggyeonggwan dataset ready for training" 
