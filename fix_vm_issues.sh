@@ -13,16 +13,20 @@ pip install --upgrade pathlib2
 echo "🐍 Linux용 패키지 설치 중..."
 pip install -r requirements_linux.txt
 
-# 3. 모델 변환
+# 3. detect.py 패치
+echo "🔧 detect.py 패치 중..."
+python3 patch_detect.py
+
+# 4. 모델 변환 (선택사항)
 echo "🔄 모델 변환 중..."
 python3 convert_model.py
 
-# 4. 파일 권한 확인
+# 5. 파일 권한 확인
 echo "🔐 파일 권한 확인 중..."
 chmod +x *.py
 chmod +x *.sh
 
-# 5. 환경 확인
+# 6. 환경 확인
 echo "✅ 환경 확인 중..."
 python3 -c "import torch; print(f'PyTorch 버전: {torch.__version__}')"
 python3 -c "import cv2; print(f'OpenCV 버전: {cv2.__version__}')"

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class ParkingOccupancyAnalyzer:
     def __init__(self, 
                  roi_path: str = "roi_manual_coords.json",
-                 model_path: str = "best_linux.pt",  # Linux용 모델로 변경
+                 model_path: str = "best_macos.pt",  # 원본 모델 사용
                  backend_url: str = "http://localhost:8080",
                  image_path: str = "frame_30min.jpg"):
         """
@@ -80,16 +80,11 @@ class ParkingOccupancyAnalyzer:
     def run_yolo_detection(self) -> List[Dict]:
         """YOLO 차량 인식 실행 (iou 0.2로 변경)"""
         try:
-            # YOLO 인식 명령어 실행 (iou 0.2로 변경)
+            # YOLO 인식 명령어 실행 (simple_detect.py 사용)
             cmd = [
-                "python3", "detect.py",
-                "--weights", "best_linux.pt",  # Linux용 모델로 변경
-                "--source", self.image_path,
-                "--conf", "0.0399",
-                "--iou", "0.2",  # 0.0에서 0.2로 변경
-                "--save-txt",
-                "--project", "runs/detect",
-                "--name", "occupancy_analysis"
+                "python3", "simple_detect.py",
+                "best_macos.pt",  # 원본 모델 사용
+                self.image_path
             ]
             
             logger.info(f"YOLO 인식 실행: {' '.join(cmd)}")
@@ -100,7 +95,7 @@ class ParkingOccupancyAnalyzer:
                 return []
             
             # 인식 결과 파일 읽기
-            txt_file = f"runs/detect/occupancy_analysis/labels/{os.path.splitext(os.path.basename(self.image_path))[0]}.txt"
+            txt_file = f"runs/detect/simple_detection/labels/{os.path.splitext(os.path.basename(self.image_path))[0]}.txt"
             
             if not os.path.exists(txt_file):
                 logger.warning(f"인식 결과 파일이 없습니다: {txt_file}")
