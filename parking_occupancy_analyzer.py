@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 주차장 점유 현황 분석 및 백엔드 전송 시스템
-YOLO 차량 인식 결과를 ROI 좌표와 비교하여 주차장 점유율 계산
+YOLO 차량 인식 결과를 ROI 좌표와 비교하여 주차장 점유율 계산 (IoU 기반)
 """
 
 import cv2
@@ -17,6 +17,7 @@ import logging
 from typing import List, Dict, Tuple, Optional
 import os
 import subprocess
+from shapely.geometry import box, Polygon
 
 # 로깅 설정
 logging.basicConfig(
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 class ParkingOccupancyAnalyzer:
     def __init__(self, 
-                 roi_path: str = "roi_full_rect_coords.json",
+                 roi_path: str = "roi_manual_coords.json",
                  model_path: str = "best_macos.pt",
                  backend_url: str = "http://localhost:8080",
                  image_path: str = "frame_30min.jpg"):
@@ -79,15 +80,15 @@ class ParkingOccupancyAnalyzer:
             return None
     
     def run_yolo_detection(self) -> List[Dict]:
-        """YOLO 차량 인식 실행"""
+        """YOLO 차량 인식 실행 (iou 0.2로 변경)"""
         try:
-            # YOLO 인식 명령어 실행
+            # YOLO 인식 명령어 실행 (iou 0.2로 변경)
             cmd = [
                 "python3", "detect.py",
                 "--weights", self.model_path,
                 "--source", self.image_path,
                 "--conf", "0.0399",
-                "--iou", "0.0",
+                "--iou", "0.2",  # 0.0에서 0.2로 변경
                 "--save-txt",
                 "--project", "runs/detect",
                 "--name", "occupancy_analysis"
@@ -163,28 +164,26 @@ class ParkingOccupancyAnalyzer:
         
         return normalized_detections
     
-    def point_in_polygon(self, point: List[int], polygon: List[List[int]]) -> bool:
-        """점이 다각형 내부에 있는지 확인 (Ray casting algorithm)"""
-        x, y = point
-        n = len(polygon)
-        inside = False
-        
-        p1x, p1y = polygon[0]
-        for i in range(n + 1):
-            p2x, p2y = polygon[i % n]
-            if y > min(p1y, p2y):
-                if y <= max(p1y, p2y):
-                    if x <= max(p1x, p2x):
-                        if p1y != p2y:
-                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                        if p1x == p2x or x <= xinters:
-                            inside = not inside
-            p1x, p1y = p2x, p2y
-        
-        return inside
+    def calculate_iou(self, bbox: List[float], roi_coords: List[List[int]]) -> float:
+        """IoU 계산 함수 (judge_occupancy.py 참고)"""
+        try:
+            bbox_poly = box(*bbox)
+            roi_poly = Polygon(roi_coords)
+            
+            if not bbox_poly.intersects(roi_poly):
+                return 0.0
+            
+            intersection_area = bbox_poly.intersection(roi_poly).area
+            union_area = bbox_poly.union(roi_poly).area
+            
+            return intersection_area / union_area if union_area > 0 else 0.0
+            
+        except Exception as e:
+            logger.warning(f"IoU 계산 중 오류: {e}")
+            return 0.0
     
-    def check_parking_slots(self, detections: List[Dict]) -> List[Dict]:
-        """주차 슬롯별 점유 현황 확인"""
+    def check_parking_slots_iou(self, detections: List[Dict]) -> List[Dict]:
+        """IoU 기반 주차 슬롯별 점유 현황 확인 (judge_occupancy.py 참고)"""
         # 이미지 로드하여 크기 확인
         image = cv2.imread(self.image_path)
         if image is None:
@@ -194,8 +193,8 @@ class ParkingOccupancyAnalyzer:
         height, width = image.shape[:2]
         normalized_detections = self.normalize_coordinates(detections, (height, width))
         
-        # ROI 데이터에서 첫 번째 이미지의 슬롯 정보 사용
-        image_key = list(self.roi_data.keys())[0] if self.roi_data else "test.png"
+        # ROI 데이터에서 frame_30min.jpg의 슬롯 정보 사용
+        image_key = "frame_30min.jpg"
         slots = self.roi_data.get(image_key, [])
         
         slot_status = []
@@ -204,22 +203,27 @@ class ParkingOccupancyAnalyzer:
             slot_id = slot['slot_id']
             coords = slot['coords']
             
-            # 슬롯 내부에 차량이 있는지 확인
-            occupied = False
+            # IoU 기반 점유 판단 (judge_occupancy.py 참고)
+            max_iou = 0.0
             vehicle_count = 0
             
             for det in normalized_detections:
                 # 차량 클래스 ID 확인 (0: car, 2: car, 3: motorcycle, 5: bus, 7: truck)
                 if det['class_id'] in [0, 2, 3, 5, 7]:
-                    # 바운딩 박스의 중심점이 슬롯 내부에 있는지 확인
-                    if self.point_in_polygon(det['center'], coords):
-                        occupied = True
+                    iou = self.calculate_iou(det['bbox'], coords)
+                    if iou > max_iou:
+                        max_iou = iou
+                    if iou >= 0.1:  # judge_occupancy.py와 동일한 임계값
                         vehicle_count += 1
+            
+            # IoU 임계값 0.17 이상이면 점유로 판단
+            occupied = max_iou >= 0.17
             
             slot_status.append({
                 'slot_id': slot_id,
                 'occupied': occupied,
                 'vehicle_count': vehicle_count,
+                'max_iou': round(max_iou, 3),
                 'coordinates': coords
             })
         
@@ -242,9 +246,9 @@ class ParkingOccupancyAnalyzer:
         }
     
     def send_to_backend(self, slot_status: List[Dict], occupancy_info: Dict, timestamp: datetime) -> bool:
-        """백엔드 서버로 데이터 전송"""
+        """백엔드 서버로 JSON 데이터 전송"""
         try:
-            # 전송할 데이터 구성
+            # 전송할 데이터 구성 (JSON 형식)
             payload = {
                 'timestamp': timestamp.isoformat(),
                 'parking_lot_id': 'sanggyeonggwan',  # 주차장 ID
@@ -253,7 +257,8 @@ class ParkingOccupancyAnalyzer:
                     {
                         'slot_id': slot['slot_id'],
                         'occupied': slot['occupied'],
-                        'vehicle_count': slot['vehicle_count']
+                        'vehicle_count': slot['vehicle_count'],
+                        'max_iou': slot['max_iou']
                     }
                     for slot in slot_status
                 ]
@@ -281,7 +286,7 @@ class ParkingOccupancyAnalyzer:
             return False
     
     def save_analysis_result(self, slot_status: List[Dict], occupancy_info: Dict, timestamp: datetime):
-        """분석 결과 저장"""
+        """분석 결과를 JSON 파일로 저장"""
         result = {
             'timestamp': timestamp.isoformat(),
             'occupancy_info': occupancy_info,
@@ -297,16 +302,16 @@ class ParkingOccupancyAnalyzer:
     
     def run_analysis(self):
         """전체 분석 프로세스 실행"""
-        logger.info("주차장 점유 현황 분석 시작")
+        logger.info("주차장 점유 현황 분석 시작 (IoU 기반)")
         
-        # 1. YOLO 차량 인식 실행
+        # 1. YOLO 차량 인식 실행 (iou 0.2)
         detections = self.run_yolo_detection()
         if not detections:
             logger.error("차량 인식 실패")
             return
         
-        # 2. 주차 슬롯 점유 현황 확인
-        slot_status = self.check_parking_slots(detections)
+        # 2. IoU 기반 주차 슬롯 점유 현황 확인
+        slot_status = self.check_parking_slots_iou(detections)
         if not slot_status:
             logger.error("주차 슬롯 분석 실패")
             return
@@ -318,16 +323,16 @@ class ParkingOccupancyAnalyzer:
         timestamp = datetime.now()
         
         # 5. 결과 출력
-        logger.info(f"분석 완료:")
+        logger.info(f"분석 완료 (IoU 기반):")
         logger.info(f"  - 전체 슬롯: {occupancy_info['total_slots']}개")
         logger.info(f"  - 점유 슬롯: {occupancy_info['occupied_slots']}개")
         logger.info(f"  - 전체 차량: {occupancy_info['total_vehicles']}대")
         logger.info(f"  - 점유율: {occupancy_info['occupancy_ratio']} ({occupancy_info['occupancy_rate']}%)")
         
-        # 6. 백엔드 전송
+        # 6. 백엔드 전송 (JSON 형식)
         success = self.send_to_backend(slot_status, occupancy_info, timestamp)
         
-        # 7. 결과 저장
+        # 7. 결과 저장 (JSON 형식)
         self.save_analysis_result(slot_status, occupancy_info, timestamp)
         
         if success:

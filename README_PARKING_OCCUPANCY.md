@@ -1,21 +1,22 @@
-# 주차장 점유 현황 분석 시스템
+# 주차장 점유 현황 분석 시스템 (IoU 기반)
 
 YOLO 차량 인식을 통해 주차장의 점유 현황을 실시간으로 분석하고 백엔드 서버로 전송하는 시스템입니다.
 
 ## 주요 기능
 
-- **차량 인식**: YOLO 모델을 사용한 최대한의 차량 인식 (conf: 0.0399)
-- **ROI 기반 분석**: 주차 슬롯별 ROI 좌표와 차량 위치 비교
-- **점유율 계산**: 전체 슬롯 대비 점유 슬롯 비율 계산 (예: 70/30)
+- **차량 인식**: YOLO 모델을 사용한 최대한의 차량 인식 (conf: 0.0399, iou: 0.2)
+- **IoU 기반 분석**: 주차 슬롯별 ROI 좌표와 차량 바운딩 박스의 IoU 계산
+- **점유율 계산**: 전체 슬롯 대비 점유 슬롯 비율 계산 (예: 8/79)
+- **JSON 전송**: 백엔드 서버로 JSON 형태로 데이터 전송
 - **자동 전송**: 3분마다 백엔드 서버로 JSON 형태로 데이터 전송
 - **정확한 분석**: 주차장이 아닌 차량은 점유율에 반영되지 않음
 
 ## 시스템 구조
 
 ```
-parking_occupancy_analyzer.py  # 메인 분석기
+parking_occupancy_analyzer.py  # 메인 분석기 (IoU 기반)
 parking_scheduler.py           # 3분마다 자동 실행 스케줄러
-run_parking_analysis.py        # 수동 실행 스크립트
+run_parking_analysis.py        # 실행 스크립트
 DanParking_BACKEND/           # 백엔드 서버 (Spring Boot)
 ```
 
@@ -47,7 +48,7 @@ python3 parking_occupancy_analyzer.py
 
 ### 2. YOLO 인식만 실행
 ```bash
-python3 detect.py --weights best_macos.pt --source frame_30min.jpg --conf 0.0399 --iou 0.0 --save-txt
+python3 detect.py --weights best_macos.pt --source frame_30min.jpg --conf 0.0399 --iou 0.2 --save-txt
 ```
 
 ### 3. 전체 시스템 실행 (수동)
@@ -65,25 +66,27 @@ python3 parking_scheduler.py
 ### 백엔드로 전송되는 JSON 형식
 ```json
 {
-  "timestamp": "2024-01-15T10:30:00",
+  "timestamp": "2025-08-07T09:18:50.624348",
   "parking_lot_id": "sanggyeonggwan",
   "occupancy_info": {
-    "total_slots": 100,
-    "occupied_slots": 70,
-    "total_vehicles": 70,
-    "occupancy_rate": 70.0,
-    "occupancy_ratio": "70/100"
+    "total_slots": 79,
+    "occupied_slots": 8,
+    "total_vehicles": 8,
+    "occupancy_rate": 10.1,
+    "occupancy_ratio": "8/79"
   },
   "slot_details": [
     {
       "slot_id": "slot_1",
       "occupied": true,
-      "vehicle_count": 1
+      "vehicle_count": 1,
+      "max_iou": 0.228
     },
     {
       "slot_id": "slot_2",
       "occupied": false,
-      "vehicle_count": 0
+      "vehicle_count": 0,
+      "max_iou": 0.04
     }
   ]
 }
@@ -111,7 +114,7 @@ GET /parking-lots/occupancy/{parkingLotId}
 
 ### YOLO 모델
 - `best_macos.pt`: 훈련된 차량 인식 모델
-- conf: 0.0399, iou: 0.0으로 최대한의 차량 인식
+- conf: 0.0399, iou: 0.2로 최대한의 차량 인식
 
 ## 로그 파일
 
@@ -123,14 +126,21 @@ GET /parking-lots/occupancy/{parkingLotId}
 
 ### 점유율 계산 방식
 - **전체 슬롯**: ROI로 정의된 주차 공간 수
-- **점유 슬롯**: 차량이 감지된 슬롯 수
+- **점유 슬롯**: IoU >= 0.1인 슬롯 수
 - **점유율**: (점유 슬롯 / 전체 슬롯) × 100
 - **점유 비율**: "점유 슬롯/전체 슬롯" 형태
 
-### 차량 인식 기준
+### IoU 기반 차량 인식 기준
 - 차량 클래스 ID: 0(car), 2(car), 3(motorcycle), 5(bus), 7(truck)
-- 바운딩 박스 중심점이 ROI 내부에 있을 때 점유로 판단
+- IoU (Intersection over Union) 계산으로 정확한 점유 판단
+- IoU >= 0.1일 때 점유로 판단 (judge_occupancy.py 참고)
 - 주차장 외부 차량은 점유율에 반영되지 않음
+
+### 최신 분석 결과 (2025-08-07)
+- **감지된 차량**: 17대
+- **주차장 점유**: 8대 (8개 슬롯)
+- **점유율**: 10.1% (8/79)
+- **IoU 임계값**: 0.1
 
 ## 문제 해결
 
@@ -148,9 +158,14 @@ GET /parking-lots/occupancy/{parkingLotId}
 - `roi_full_rect_coords.json` 파일 형식 확인
 - 좌표값이 이미지 크기 내에 있는지 확인
 
+### 4. IoU 계산 오류
+- shapely 패키지 설치 확인: `pip install shapely`
+- ROI 좌표 형식 확인
+
 ## 성능 최적화
 
 - **GPU 사용**: MPS (Apple Silicon) 또는 CUDA 사용
+- **IoU 계산**: shapely 라이브러리로 정확한 기하학적 계산
 - **배치 처리**: 여러 이미지 동시 처리 가능
 - **메모리 관리**: 분석 후 메모리 정리
 
@@ -158,4 +173,5 @@ GET /parking-lots/occupancy/{parkingLotId}
 
 - 실시간 로그 확인
 - 점유율 변화 추이 모니터링
-- 백엔드 전송 성공률 확인 
+- 백엔드 전송 성공률 확인
+- IoU 값 분포 분석 

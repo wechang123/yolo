@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 주차장 점유 현황 분석 스케줄러
-3분마다 자동으로 차량 인식 및 점유 현황 분석을 실행
+3분마다 자동으로 차량 인식 및 점유 현황 분석을 실행 (IoU 기반)
 """
 
 import time
@@ -53,7 +53,7 @@ class ParkingScheduler:
             backend_url=backend_url
         )
         
-        logger.info(f"주차장 분석 스케줄러 초기화 완료 - {interval_minutes}분 간격")
+        logger.info(f"주차장 분석 스케줄러 초기화 완료 - {interval_minutes}분 간격 (IoU 기반)")
     
     def extract_frame_from_video(self, target_minutes: int) -> str:
         """영상에서 특정 시간의 프레임 추출"""
@@ -86,9 +86,9 @@ class ParkingScheduler:
             return None
     
     def run_analysis_job(self):
-        """분석 작업 실행"""
+        """분석 작업 실행 (IoU 기반)"""
         try:
-            logger.info("=== 주차장 점유 현황 분석 시작 ===")
+            logger.info("=== 주차장 점유 현황 분석 시작 (IoU 기반) ===")
             
             # 현재 시간을 기준으로 프레임 추출 (예: 30분, 33분, 36분...)
             current_time = datetime.now()
@@ -106,14 +106,14 @@ class ParkingScheduler:
             # 분석 실행
             self.analyzer.run_analysis()
             
-            logger.info("=== 주차장 점유 현황 분석 완료 ===")
+            logger.info("=== 주차장 점유 현황 분석 완료 (IoU 기반) ===")
             
         except Exception as e:
             logger.error(f"분석 작업 실행 중 오류: {e}")
     
     def start_scheduler(self):
         """스케줄러 시작"""
-        logger.info("주차장 분석 스케줄러 시작")
+        logger.info("주차장 분석 스케줄러 시작 (IoU 기반)")
         
         # 3분마다 실행
         schedule.every(self.interval_minutes).minutes.do(self.run_analysis_job)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 주차장 점유 현황 분석 실행 스크립트
-YOLO 차량 인식 → ROI 비교 → 백엔드 전송
+YOLO 차량 인식 → ROI 비교 → 백엔드 전송 (IoU 기반)
 """
 
 import os
@@ -38,17 +38,17 @@ def activate_environment():
         return False
 
 def run_yolo_detection():
-    """YOLO 차량 인식 실행"""
+    """YOLO 차량 인식 실행 (iou 0.2)"""
     try:
-        logger.info("YOLO 차량 인식 시작...")
+        logger.info("YOLO 차량 인식 시작 (IoU 기반)...")
         
-        # YOLO 인식 명령어
+        # YOLO 인식 명령어 (iou 0.2로 변경)
         cmd = [
             "python3", "detect.py",
             "--weights", "best_macos.pt",
             "--source", "frame_30min.jpg",
             "--conf", "0.0399",
-            "--iou", "0.0",
+            "--iou", "0.2",  # 0.0에서 0.2로 변경
             "--save-txt",
             "--project", "runs/detect",
             "--name", "occupancy_analysis"
@@ -71,9 +71,9 @@ def run_yolo_detection():
         return False
 
 def run_occupancy_analysis():
-    """점유 현황 분석 실행"""
+    """점유 현황 분석 실행 (IoU 기반)"""
     try:
-        logger.info("점유 현황 분석 시작...")
+        logger.info("점유 현황 분석 시작 (IoU 기반)...")
         
         # 점유 현황 분석 실행
         cmd = ["python3", "parking_occupancy_analyzer.py"]
@@ -93,7 +93,7 @@ def run_occupancy_analysis():
 
 def main():
     """메인 실행 함수"""
-    logger.info("=== 주차장 점유 현황 분석 시스템 시작 ===")
+    logger.info("=== 주차장 점유 현황 분석 시스템 시작 (IoU 기반) ===")
     
     # 1. 가상환경 활성화 확인
     if not activate_environment():
@@ -115,17 +115,17 @@ def main():
     
     logger.info("모든 필요한 파일 확인 완료")
     
-    # 3. YOLO 차량 인식 실행
+    # 3. YOLO 차량 인식 실행 (iou 0.2)
     if not run_yolo_detection():
         logger.error("YOLO 인식 실패")
         return
     
-    # 4. 점유 현황 분석 실행
+    # 4. 점유 현황 분석 실행 (IoU 기반)
     if not run_occupancy_analysis():
         logger.error("점유 현황 분석 실패")
         return
     
-    logger.info("=== 주차장 점유 현황 분석 완료 ===")
+    logger.info("=== 주차장 점유 현황 분석 완료 (IoU 기반) ===")
 
 if __name__ == "__main__":
     main() 
