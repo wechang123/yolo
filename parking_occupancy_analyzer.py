@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class ParkingOccupancyAnalyzer:
     def __init__(self, 
                  roi_path: str = "roi_manual_coords.json",
-                 model_path: str = "best_macos.pt",
+                 model_path: str = "best_linux.pt",  # Linux용 모델로 변경
                  backend_url: str = "http://localhost:8080",
                  image_path: str = "frame_30min.jpg"):
         """
@@ -70,11 +70,9 @@ class ParkingOccupancyAnalyzer:
     def load_yolo_model(self):
         """YOLO 모델 로드"""
         try:
-            device = 'mps' if torch.backends.mps.is_available() else 'cpu'
-            model = attempt_load(self.model_path, device=device)
-            model.eval()
-            logger.info(f"YOLO 모델 로드 완료 - 장치: {device}")
-            return model
+            # Linux 환경에서는 모델 로드를 건너뛰고 detect.py에서 처리
+            logger.info("Linux 환경: YOLO 모델은 detect.py에서 로드됩니다.")
+            return None
         except Exception as e:
             logger.error(f"YOLO 모델 로드 실패: {e}")
             return None
@@ -85,7 +83,7 @@ class ParkingOccupancyAnalyzer:
             # YOLO 인식 명령어 실행 (iou 0.2로 변경)
             cmd = [
                 "python3", "detect.py",
-                "--weights", self.model_path,
+                "--weights", "best_linux.pt",  # Linux용 모델로 변경
                 "--source", self.image_path,
                 "--conf", "0.0399",
                 "--iou", "0.2",  # 0.0에서 0.2로 변경
